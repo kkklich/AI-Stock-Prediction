@@ -12,7 +12,7 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.impute import SimpleImputer
 
 # Wczytaj dane historyczne cen akcji
-data = pd.read_csv('pzu_d (3).csv')
+data = pd.read_csv('files/cps_d.csv')
 
 data = data.rename(columns={'Data': 'Date', 'Otwarcie': 'Open','Najwyzszy':'High','Najnizszy':'Low','Zamkniecie':'Close', 'Wolumen':'Volume'})
 #print(data)
@@ -23,6 +23,8 @@ data = data.rename(columns={'Data': 'Date', 'Otwarcie': 'Open','Najwyzszy':'High
 # Usuń wiersze z brakującymi wartościami
 data.dropna(inplace=True)
 print(data)
+print(len( data))
+totalLength = len(data)
 print('------')
 
 
@@ -109,7 +111,8 @@ def identify_trendClassification(data):
     # Rysowanie wykresu
     plt.figure(figsize=(10, 6))
     plt.plot(df['Close'], label='Close Price')
-    plt.scatter(len(df) - 1, last_close, color='red', marker='o', label='Last Close Price')
+    #print(len(df) - 1, last_close)
+    #plt.scatter(len(df) - 1, last_close, color='red', marker='o', label='Last Close Price')
     plt.title('Stock Price and Predicted Trend')
     plt.xlabel('Day')
     plt.ylabel('Close Price')
@@ -123,11 +126,11 @@ def identify_trendClassification(data):
 
 
 # Calling the function with the example stock data
-last_1500_rows = data.tail(50)
+last_1500_rows = data.tail(450)
 #last_1500_rows = data
 
-predicted_trend = identify_trend(last_1500_rows)
-print("regresja ",predicted_trend)
+#predicted_trend = identify_trend(last_1500_rows)
+#print("regresja ",predicted_trend)
 
 trend = identify_trendClassification(last_1500_rows)
 print("Obecny trend: KNN", trend)

@@ -5,10 +5,17 @@ import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LinearRegression
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.metrics import accuracy_score
+from sklearn.metrics import confusion_matrix
+
+selected_columns = ['open', 'close', 'volume', 'SMA_20', 'angle','EMA_50', 'daily_changes','open-close-changes','RSI']
 
 def standarize_data(df):
     # Standardize the data using the MinMaxScaler
-    data_scaler = df[['open', 'close', 'volume', 'SMA_20', 'angle','SMA_50']]
+
+    data_scaler = df.loc[:, selected_columns]
     #scaler = MinMaxScaler()   #88.6%
     scaler = StandardScaler()  #90.5%
     df_scaled = scaler.fit_transform(data_scaler)
@@ -20,7 +27,7 @@ def train_model(stock_data):
     df = pd.DataFrame(stock_data)
     # Inżynieria cech
     df.dropna(inplace=True)
-    df_x = df[['open', 'close', 'volume', 'SMA_20', 'angle','SMA_50']]
+    df_x = df.loc[:, selected_columns]
 
     X = standarize_data(df_x)
     #  'trend' to kolumna z etykietami klas, w tym przypadku -1 (spadkowy), 0 (boczny, 1 (rosnąc
@@ -29,11 +36,11 @@ def train_model(stock_data):
     # Podział danych na zbiór treningowy i testowy
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    # Uczenie modelu regresją logistyczna
-    model = LogisticRegression(max_iter=30000)
+    # Uczenie modelu regresją logistyczna 0 | 1
+    model = LogisticRegression(max_iter=100)
 
     #model = LinearRegression()
-    #model = DecisionTreeClassifier(max_depth=10)
+    #model = DecisionTreeClassifier(max_depth=1000)
 
     model.fit(X_train, y_train)
 
@@ -45,10 +52,9 @@ def train_model(stock_data):
     return model
 
 def predict_trend(model, recent_data):
-    # Przygotowanie danych dla ostatnich 20 dni
     recent_df = pd.DataFrame(recent_data)
-    X_recent = recent_df[['open',  'close', 'volume', 'SMA_20', 'angle','SMA_50']];
-
+    X_recent = recent_df.loc[:, selected_columns]
+    #standaryzacja danych do predykcji
     X_recent = standarize_data(X_recent)
 
     # Przewidywanie trendu
@@ -71,30 +77,60 @@ def aggregate_trend(predicted_trend):
     else:
         return 0  # Trend boczny
 
+
+#obliczanie RSI
+def calculate_rsi(prices, period):
+    # Calculate the difference between each consecutive price
+    price_diff = prices.diff()
+
+    # Calculate the gain and loss
+    gain = price_diff.where(price_diff > 0, 0)
+    loss = -price_diff.where(price_diff < 0, 0)
+
+    # Calculate the average gain and average loss
+    avg_gain = gain.rolling(window=period).mean()
+    avg_loss = loss.rolling(window=period).mean()
+
+    # Calculate the relative strength
+    relative_strength = avg_gain / avg_loss
+
+    # Calculate the RSI
+    rsi = 100 - (100 / (1 + relative_strength))
+
+    return rsi
+
+
+#feature engineering tworzenie cech
 def add_trend_label(stock_data, SMA_window=20):
     # Konwertowanie danych do obiektu DataFrame
     df = pd.DataFrame(stock_data)
 
-    # Sortowanie danych po dacie w kolejności rosnącej
-    df.sort_values(by='date', inplace=True)
-
-    # Obliczenie SMA-20
+    # Obliczenie cech
     df['SMA_20'] = df['close'].rolling(window=SMA_window).mean()
     df['SMA_50'] = df['close'].rolling(window=50).mean()
+    df['EMA_50'] =  df['close'].ewm(span=5, adjust=False).mean()
+    df['daily_changes'] = df['close'].pct_change()
+    df['open-close-changes'] =  (df['high'] - df['low']) / df['high']
+    df['RSI'] = calculate_rsi(df['close'], period=3)
 
     # tworzenie kolumny  'dx' i 'dy', dzięki którym będzie można obliczyć kąt nachylenie w wykresie
     df['y_index'] = df.index
     df['dx'] = df['y_index'].diff()
     df['dy'] = df['SMA_20'].diff()
-
     # Obliczanie kątu nachylenia w radianach
     df['angle'] = np.arctan2(df['dy'], df['dx'])
-    df['trend'] = np.where(df['angle'] > 0.01, 1, np.where(df['angle'] < -0.01, -1, 0))
 
     df.dropna(inplace=True)
     return df
 
+#tworzenie etykiety danych
+def add_trend(df):
+    df['trend'] = np.where(df['angle'] > 0.01, 1, np.where(df['angle'] < -0.01, -1, 0))
+    return  df
+
+
 def read_csv_file(fileName):
+    #wczytywanie danych z plików csv
     data = pd.read_csv(fileName)
     data = data.rename(
         columns={'Data': 'date', 'Otwarcie': 'open', 'Najwyzszy': 'high', 'Najnizszy': 'low', 'Zamkniecie': 'close',
@@ -111,8 +147,9 @@ def read_all_csv_files(folder_path):
         file_path = os.path.join(folder_path, file)
         df = read_csv_file(file_path)
         print(len(df))
-        df_last = df.tail(1000)
-        dataframes.append(df_last)
+        #df = df.tail(1000)
+        df = add_trend_label(df)
+        dataframes.append(df)
     concatenated_df = pd.concat(dataframes)
     concatenated_df.reset_index(drop=True, inplace=True)
     return concatenated_df
@@ -121,16 +158,21 @@ def read_all_csv_files(folder_path):
 data = read_all_csv_files('files')
 print(len(data))
 
+#ustalenie długości SMA
 SMA_length = 20
 
-#1 Dodanie etykiety "trend" do danych giełdowych
-stock_data_with_trend = add_trend_label(data, SMA_length)
+#1 Dodanie etykiet do danych giełdowych feature engineering
+#data = add_trend_label(data, SMA_length)
+stock_data_with_trend = add_trend(data)
+
+pd.set_option('display.max_columns', None)
+print(stock_data_with_trend.head())
 
 #2 Trenowanie modelu
 trained_model = train_model(stock_data_with_trend)
 
 #3 Przewidywanie trendu dla wybranej spółki
-fileName = 'files/xtb_d.csv'
+fileName = 'files/dnp_d.csv'
 data_predict = read_csv_file(fileName)
 
 data_predict = add_trend_label(data_predict, SMA_length)

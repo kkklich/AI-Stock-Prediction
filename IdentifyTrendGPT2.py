@@ -4,12 +4,13 @@ from sklearn.model_selection import train_test_split
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import StandardScaler
 
 def standarize_data(df):
     # Standardize the data using the MinMaxScaler
-    data_scaler = df[['open', 'close', 'volume', 'SMA_20', 'angle']]
-    scaler = MinMaxScaler()
-    #scaler = StandardScaler()
+    data_scaler = df[['open', 'close', 'volume', 'SMA_20', 'angle','SMA_50']]
+    #scaler = MinMaxScaler()   #88.6%
+    scaler = StandardScaler()  #90.5%
     df_scaled = scaler.fit_transform(data_scaler)
 
     return df_scaled
@@ -19,12 +20,9 @@ def train_model(stock_data):
     df = pd.DataFrame(stock_data)
     # Inżynieria cech
     df.dropna(inplace=True)
-
-    df_x = df[['open', 'close', 'volume', 'SMA_20', 'angle']]
+    df_x = df[['open', 'close', 'volume', 'SMA_20', 'angle','SMA_50']]
 
     X = standarize_data(df_x)
-    print(X)
-
     #  'trend' to kolumna z etykietami klas, w tym przypadku -1 (spadkowy), 0 (boczny, 1 (rosnąc
     y = df['trend']
 
@@ -49,7 +47,7 @@ def train_model(stock_data):
 def predict_trend(model, recent_data):
     # Przygotowanie danych dla ostatnich 20 dni
     recent_df = pd.DataFrame(recent_data)
-    X_recent = recent_df[['open',  'close', 'volume', 'SMA_20', 'angle']];
+    X_recent = recent_df[['open',  'close', 'volume', 'SMA_20', 'angle','SMA_50']];
 
     X_recent = standarize_data(X_recent)
 
@@ -82,6 +80,7 @@ def add_trend_label(stock_data, SMA_window=20):
 
     # Obliczenie SMA-20
     df['SMA_20'] = df['close'].rolling(window=SMA_window).mean()
+    df['SMA_50'] = df['close'].rolling(window=50).mean()
 
     # tworzenie kolumny  'dx' i 'dy', dzięki którym będzie można obliczyć kąt nachylenie w wykresie
     df['y_index'] = df.index
